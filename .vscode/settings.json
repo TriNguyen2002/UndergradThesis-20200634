@@ -1,0 +1,26 @@
+{
+    "python.autoComplete.extraPaths": [
+        "/home/hust/ros2_ws/install/ur_robot_driver/local/lib/python3.10/dist-packages",
+        "/home/hust/ros2_ws/install/ur_moveit_config/local/lib/python3.10/dist-packages",
+        "/home/hust/ros2_ws/install/ur_dashboard_msgs/local/lib/python3.10/dist-packages",
+        "/home/hust/ws_moveit/install/moveit_task_constructor_core/local/lib/python3.10/dist-packages",
+        "/home/hust/ws_moveit/install/moveit_configs_utils/lib/python3.10/site-packages",
+        "/home/hust/ws_moveit/install/srdfdom/local/lib/python3.10/dist-packages",
+        "/home/hust/ws_moveit/install/moveit_task_constructor_msgs/local/lib/python3.10/dist-packages",
+        "/home/hust/ws_moveit/install/launch_param_builder/lib/python3.10/site-packages",
+        "/opt/ros/humble/lib/python3.10/site-packages",
+        "/opt/ros/humble/local/lib/python3.10/dist-packages"
+    ],
+    "python.analysis.extraPaths": [
+        "/home/hust/ros2_ws/install/ur_robot_driver/local/lib/python3.10/dist-packages",
+        "/home/hust/ros2_ws/install/ur_moveit_config/local/lib/python3.10/dist-packages",
+        "/home/hust/ros2_ws/install/ur_dashboard_msgs/local/lib/python3.10/dist-packages",
+        "/home/hust/ws_moveit/install/moveit_task_constructor_core/local/lib/python3.10/dist-packages",
+        "/home/hust/ws_moveit/install/moveit_configs_utils/lib/python3.10/site-packages",
+        "/home/hust/ws_moveit/install/srdfdom/local/lib/python3.10/dist-packages",
+        "/home/hust/ws_moveit/install/moveit_task_constructor_msgs/local/lib/python3.10/dist-packages",
+        "/home/hust/ws_moveit/install/launch_param_builder/lib/python3.10/site-packages",
+        "/opt/ros/humble/lib/python3.10/site-packages",
+        "/opt/ros/humble/local/lib/python3.10/dist-packages"
+    ]
+}
