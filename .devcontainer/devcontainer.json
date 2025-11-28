@@ -20,4 +20,16 @@
   ,
   "postCreateCommand": "sudo apt-get update && sudo apt-get install -y python3-rosdep && sudo rosdep init || true && sudo rosdep update || true",
   "remoteUser": "ubuntu"
+  ,
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-vscode.cpptools",
+        "ms-vscode.cmake-tools",
+        "ms-iot.vscode-ros"
+      ]
+    }
+  }
 }
