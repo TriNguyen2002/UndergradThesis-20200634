@@ -3,7 +3,7 @@
 import rosbag
 import rospy
 from sensor_msgs.msg import JointState
-from hri_msg.msg import HumanJoint
+from ur5_interface.msg import HumanJoint
 
 
 def record_topics():

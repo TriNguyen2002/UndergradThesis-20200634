@@ -9,7 +9,7 @@ import os
 import rospkg
 import numpy as np
 from visualization_msgs.msg import Marker, MarkerArray
-from hri_msg.msg import HumanJoint
+from ur5_interface.msg import HumanJoint
 import tf2_ros
 from geometry_msgs.msg import TransformStamped
 import tf.transformations
