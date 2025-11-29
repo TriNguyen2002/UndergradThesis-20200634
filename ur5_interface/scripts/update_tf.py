@@ -19,17 +19,24 @@ class TransformPublisher:
         aruco_robot_tf = TransformStamped()
         aruco_robot_tf.header.frame_id = "base_link"
         aruco_robot_tf.child_frame_id = "aruco"
-        quaternion = tf.transformations.quaternion_from_euler(0, 25.8*np.pi/180, -180*np.pi/180)
-        aruco_robot_tf.transform.translation.x = -0.025
-        aruco_robot_tf.transform.translation.y = 0.31
-        aruco_robot_tf.transform.translation.z = 0.0217
+        quaternion = tf.transformations.quaternion_from_euler(0, 90*np.pi/180, -180*np.pi/180)
+        aruco_robot_tf.transform.translation.x = 0.2
+        aruco_robot_tf.transform.translation.y = -0.16
+        aruco_robot_tf.transform.translation.z = 0.04
+
         aruco_robot_tf.transform.rotation.x = quaternion[0]
         aruco_robot_tf.transform.rotation.y = quaternion[1]
         aruco_robot_tf.transform.rotation.z = quaternion[2]
         aruco_robot_tf.transform.rotation.w = quaternion[3]
 
         #! TF: ARUCO_OPTICAL_FRAME
-        aruco_camera_mtx = np.loadtxt("/home/drx/catkin_ws/src/ur5_interface/data/aruco_camera.txt")
+        data_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
+        file_path = os.path.join(data_dir, "aruco_camera.txt")
+        if not os.path.exists(file_path):
+            rospy.logerr("Aruco camera file not found: %s", file_path)
+            raise RuntimeError("Aruco camera matrix not found. Run callib.py to generate it first.")
+
+        aruco_camera_mtx = np.loadtxt(file_path)
         aruco_camera_mtx = np.linalg.inv(aruco_camera_mtx)
         aruco_camera_tf = TransformStamped()
         aruco_camera_tf.header.frame_id = "aruco"

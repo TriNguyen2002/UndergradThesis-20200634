@@ -45,7 +45,7 @@ def _load_plan_from_file(path: str):
 
 
 def replan_RRT_callback(msg:HumanJoint):
-    print("REPLAN")
+    rospy.loginfo("REPLAN request received")
     scene.remove_world_object("human")
     if msg.exist:
         human = geometry_msgs.msg.PoseStamped()
@@ -56,12 +56,39 @@ def replan_RRT_callback(msg:HumanJoint):
         human.pose.position.z = msg.position.z
         scene.add_sphere("human", human, radius = 0.0545)
 
-    group.set_pose_target(pose_goal)
-    success = False
-    while not success:
-        success, plan, *other = group.plan(pose_goal)
+    # ensure start state reflects current robot configuration so collision checking is accurate
+    try:
+        group.set_start_state_to_current_state()
+    except Exception:
+        # older/newer commander versions may not have the method — ignore if unavailable
+        pass
 
-    pub_traj.publish(plan)
+    group.set_pose_target(pose_goal)
+
+    # Diagnostic info: ensure planning scene objects and planning frame are visible
+    rospy.loginfo(f"Planning frame: {group.get_planning_frame()}")
+    rospy.loginfo(f"Known planning-scene objects: {scene.get_known_object_names()}")
+
+    success = False
+    attempt = 0
+    while not success and attempt < 5:
+        attempt += 1
+        rospy.loginfo(f"Planning attempt #{attempt}")
+        result = group.plan(pose_goal)
+        # moveit_commander.plan can return (success, plan) or a RobotTrajectory directly
+        if isinstance(result, tuple) or isinstance(result, list):
+            success = bool(result[0])
+            plan = result[1] if len(result) > 1 else None
+        else:
+            # assume we got a RobotTrajectory -> treat as success
+            plan = result
+            success = plan is not None
+
+    if not success or plan is None:
+        rospy.logwarn("planning failed or returned a None plan")
+    else:
+        rospy.loginfo("Planning succeeded, publishing trajectory")
+        pub_traj.publish(plan)
 
 
 if __name__ == "__main__":
@@ -80,8 +107,20 @@ if __name__ == "__main__":
 
     print(f"========== Planner: {group.get_planner_id()}")
 
-    #!- Create Planning Scence -!#
+    #!- Create Planning Scene -!#
     scene.clear()
+
+    # Wait for the planning scene to be ready and confirm objects are attached
+    def wait_for_scene_object(name, timeout=5.0):
+        start = rospy.Time.now().to_sec()
+        while rospy.Time.now().to_sec() - start < timeout:
+            known = scene.get_known_object_names()
+            if name in known:
+                rospy.loginfo(f"Planning scene object '{name}' available")
+                return True
+            rospy.sleep(0.2)
+        rospy.logwarn(f"Timed out waiting for planning-scene object '{name}' (known: {known})")
+        return False
 
     # plane = geometry_msgs.msg.PoseStamped()
     # plane.header.frame_id = group.get_planning_frame()
@@ -188,6 +227,7 @@ if __name__ == "__main__":
     camera_.pose.position.z = 0.9 
     camera_name = "camera_cage"
     scene.add_box(camera_name, camera_, size=(0.61, 0.5, 0.3))
+    # small delay so move_group accepts the planning scene diff
     rospy.sleep(2)
     # !- Go Up Pose -!#
     group.set_named_target("up")

@@ -44,7 +44,8 @@ RUN sudo apt-get update && \
         ros-noetic-moveit-visual-tools \
         ros-noetic-moveit \
         ros-${ROS_DISTRO}-universal-robots && \
-    pip install python-fcl==0.6.11 && \
+    pip install python-fcl==0.6.11 ultralytics && \
+    sudo apt install iputils-ping -y && \
     sudo rm -rf /var/lib/apt/lists/*
 
 # Note: rosdep init/update is typically run at container runtime (postCreateCommand) because

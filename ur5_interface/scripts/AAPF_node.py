@@ -11,10 +11,10 @@ from ur5_interface.msg import HumanJoint
 import numpy as np
 from visualization_msgs.msg import Marker, MarkerArray
 
-USE_SIM = True
+USE_SIM = False
 ERR_STD = np.array([[0.01 for i in range(6)]])
 LOOP_MAX = 50
-ANGLE_MAX = 0.03  # rad
+ANGLE_MAX = 0.025  # rad
 DIST_rep = 0.05
 DIST_att = 1.57
 K_att = 1000

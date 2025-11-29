@@ -6,6 +6,7 @@ from sensor_msgs.msg import CameraInfo, Image
 from cv_bridge import CvBridge
 
 import tf2_ros
+import os
 from geometry_msgs.msg import TransformStamped
 import tf.transformations
 import yaml
@@ -93,21 +94,58 @@ if __name__ == "__main__":
         if len(corners) > 0:
             print("Detected")
             for i in range(0, len(ids)):
-                rvecs, tvecs, markerPoints = cv2.aruco.estimatePoseSingleMarkers(corners[i], 0.1, MTX_K, MTX_D)
+                # estimatePoseSingleMarkers is not available in some cv2 builds
+                # (e.g. opencv-python without contrib). Fall back to solvePnP.
+                marker_corners = corners[i].reshape(-1, 2).astype(np.float32)
+                marker_size = 0.1
+
+                if hasattr(cv2.aruco, "estimatePoseSingleMarkers"):
+                    # newer builds with contrib
+                    rvecs, tvecs, markerPoints = cv2.aruco.estimatePoseSingleMarkers(
+                        corners[i], marker_size, MTX_K, MTX_D
+                    )
+                    rvec = rvecs[0]
+                    tvec = tvecs[0]
+                else:
+                    # build 3D object points for the marker centered at origin
+                    half = marker_size / 2.0
+                    objp = np.array(
+                        [
+                            [-half, half, 0.0],
+                            [half, half, 0.0],
+                            [half, -half, 0.0],
+                            [-half, -half, 0.0],
+                        ],
+                        dtype=np.float32,
+                    )
+
+                    # solvePnP — returns rvec, tvec
+                    success, rvec, tvec = cv2.solvePnP(objp, marker_corners, MTX_K, MTX_D)
+                    if not success:
+                        rospy.logwarn("solvePnP failed for marker id %s", ids[i])
+                        continue
+
                 image_new = cv2.aruco.drawDetectedMarkers(img_cv.copy(), corners, ids=ids, borderColor=(0, 255, 0))
                 image_new = cv2.cvtColor(image_new, cv2.COLOR_RGB2BGR)
-                image_new = cv2.drawFrameAxes(image_new, MTX_K, MTX_D, rvecs, tvecs, length=0.1)
+                # drawFrameAxes expects rvec, tvec as (3,1) arrays
+                image_new = cv2.drawFrameAxes(image_new, MTX_K, MTX_D, rvec, tvec, length=0.1)
 
                 cv2.imwrite("Calib_ARUCO.png", image_new)
 
-                t_x, t_y, t_z = tvecs.tolist()[0][0]
-                # roll, pitch, yaw = rvecs.tolist()[0][0]
+                # Ensure rvec and tvec are flattened NumPy arrays so the same
+                # downstream code works regardless of which detection branch
+                # was used (estimatePoseSingleMarkers vs solvePnP).
+                rvec_arr = np.asarray(rvec).reshape(3)
+                tvec_arr = np.asarray(tvec).reshape(3)
+
+                t_x, t_y, t_z = float(tvec_arr[0]), float(tvec_arr[1]), float(tvec_arr[2])
+                # roll, pitch, yaw = rvec_arr.tolist()
                 aruco_from_color = np.eye(4)
-                aruco_from_color[0:3, 0:3] = cv2.Rodrigues(np.array(rvecs.tolist()[0]))[0]
+                aruco_from_color[0:3, 0:3] = cv2.Rodrigues(rvec_arr)[0]
                 aruco_from_color[0,3] = t_x
                 aruco_from_color[1,3] = t_y
                 aruco_from_color[2,3] = t_z
-                trans = tfBuffer.lookup_transform("camera_link", "camera_color_optical_frame", rospy.Time(2))
+                trans = tfBuffer.lookup_transform("camera_link", "camera_link", rospy.Time(2))
                 trans: TransformStamped
 
                 quaternion = [
@@ -134,8 +172,36 @@ if __name__ == "__main__":
                 transform.transform.rotation.z = float(quaternion[2])
                 transform.transform.rotation.w = float(quaternion[3])
 
+                # Convert quaternion to Euler angles for easy inspection
+                # euler_from_quaternion returns (roll, pitch, yaw) in radians
+                try:
+                    euler_rad = tf.transformations.euler_from_quaternion(quaternion)
+                    euler_deg = tuple(np.degrees(euler_rad))
+                    # Log both quaternion and human-friendly roll/pitch/yaw
+                    rospy.loginfo(
+                        "ArUco rotation (quaternion) = [%.6f, %.6f, %.6f, %.6f]",
+                        quaternion[0],
+                        quaternion[1],
+                        quaternion[2],
+                        quaternion[3],
+                    )
+                    rospy.loginfo(
+                        "ArUco rotation (deg) roll=%.3f, pitch=%.3f, yaw=%.3f",
+                        euler_deg[0],
+                        euler_deg[1],
+                        euler_deg[2],
+                    )
+                except Exception as e:
+                    rospy.logwarn("Failed to convert quaternion to Euler angles: %s", e)
+
                 tf_broadcaster.sendTransform(transform)
 
-                np.savetxt("/home/drx/catkin_ws/src/ur5_interface/data/aruco_camera.txt", aruco_from_camera_link)
+                # Save to package-local data directory (make it if missing). Using a
+                # package-local path prevents hard-coded home directories from
+                # breaking on other systems.
+                data_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
+                os.makedirs(data_dir, exist_ok=True)
+                file_path = os.path.join(data_dir, "aruco_camera.txt")
+                np.savetxt(file_path, aruco_from_camera_link)
 
                 
