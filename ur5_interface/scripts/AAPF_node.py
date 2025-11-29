@@ -14,7 +14,7 @@ from visualization_msgs.msg import Marker, MarkerArray
 USE_SIM = True
 ERR_STD = np.array([[0.01 for i in range(6)]])
 LOOP_MAX = 50
-ANGLE_MAX = 0.02  # rad
+ANGLE_MAX = 0.025  # rad
 DIST_rep = 0.05
 DIST_att = 1.57
 K_att = 1000
@@ -33,11 +33,21 @@ class ROSNode:
         rospy.init_node("AAPF_NODE")
         rospy.loginfo("Starting AAPF_NODE.")
         self.planning_scene = CollisionMonitor()
+        # previous pose for smoothing
+        self.prev_pos = None
+        # ensure action server is available before sending goals
+        self.client = None
         self.setup_pub_sub()
 
     def setup_pub_sub(self):
         self.trajectory_sub = rospy.Subscriber("/ref_traj", RobotTrajectory, self.trajectory_callback)
-        self.client = actionlib.SimpleActionClient(action_topic, FollowJointTrajectoryAction)
+        # action client is created here; wait for server availability
+        # (moved creation to __init__ to allow waiting early)
+        if self.client is None:
+            self.client = actionlib.SimpleActionClient(action_topic, FollowJointTrajectoryAction)
+        # wait for up to 5 seconds, log warning if not available
+        if not self.client.wait_for_server(rospy.Duration(5.0)):
+            rospy.logwarn("FollowJointTrajectoryAction server not available after 5s. Commands may block.")
 
         self.visual_goal_pub = rospy.Publisher("/rviz_visual_tools", MarkerArray, queue_size=1)
         self.visual_goal_mod_pub = rospy.Publisher("/goal_mods", Marker, queue_size=1)
@@ -61,17 +71,32 @@ class ROSNode:
         goal = FollowJointTrajectoryGoal()
         goal.trajectory.joint_names = self.joint_names
 
+        # build velocity array safely
+        vel_list = [0, 0, 0, 0, 0, 0]
+        try:
+            if vel is not None:
+                # vel can be a 1x6 array or 6-element array
+                v = np.asarray(vel).reshape(-1)
+                if v.size == 6 and np.all(np.isfinite(v)):
+                    vel_list = v.tolist()
+        except Exception:
+            vel_list = [0, 0, 0, 0, 0, 0]
+
         goal.trajectory.points = [
             JointTrajectoryPoint(
                 positions=target_pos.tolist()[0],
-                velocities=[0, 0, 0, 0, 0, 0],
-                # velocities=vel.tolist()[0],
+                velocities=vel_list,
                 time_from_start=rospy.Duration(0.5),
             )
         ]
 
-        self.client.send_goal(goal)
-        self.client.wait_for_result()
+        # send trajectory and wait a short time for execution (non-blocking wait_for_result can stall main loop)
+        try:
+            self.client.send_goal(goal)
+            # don't block too long; controller will execute the single-point trajectory
+            self.client.wait_for_result(rospy.Duration(1.0))
+        except Exception as e:
+            rospy.logwarn(f"Failed sending trajectory goal: {e}")
 
     def visualize_ref_point(self, pos_ref_list):
         marker_array = MarkerArray()
@@ -209,12 +234,48 @@ class ROSNode:
                 torques_rep = self.planning_scene.compute_torques(forces_list)
                 torques_total = torques_att + torques_rep
 
-                #! Increase Joints
-                vel = torques_total / np.linalg.norm(torques_total)
-                pos_curr += ANGLE_MAX * vel
+                # Compute a stable step (delta) based on torque-derived suggestion but
+                # scale proportional to magnitude and clip to a maximum step size.
+                # This avoids always using a fixed step in the direction (causes jerks)
+                torques_vec = torques_total.reshape(-1)
+                norm_torques = np.linalg.norm(torques_vec)
+                eps = 1e-6
 
-                #! Send Command to Robot
-                # self.client.wait_for_result()
+                # scale factor to convert torque-like signal to angular step
+                torque_to_step_gain = 0.02
+                desired_step = torque_to_step_gain * torques_vec
+
+                # clip total step magnitude to ANGLE_MAX (overall joint-space step)
+                step_norm = np.linalg.norm(desired_step)
+                if step_norm > ANGLE_MAX:
+                    delta = desired_step / step_norm * ANGLE_MAX
+                else:
+                    delta = desired_step
+
+                # per-joint clipping as additional safety
+                delta = np.clip(delta, -ANGLE_MAX, ANGLE_MAX)
+
+                # smoothing / low-pass filter between previous pos and new pos to reduce jitter
+                if self.prev_pos is None:
+                    self.prev_pos = pos_curr.copy()
+
+                # candidate new position
+                next_pos = (pos_curr.reshape(-1) + delta).reshape(1, -1)
+
+                # smoothing factor alpha (0 < alpha <= 1). Lower alpha = smoother but slower.
+                alpha = 0.6
+                smoothed = alpha * next_pos + (1.0 - alpha) * self.prev_pos
+
+                # update positions
+                self.prev_pos = smoothed.copy()
+                pos_curr = smoothed
+
+                # compute commanded joint velocities from delta and chosen timeframe
+                # ensure we avoid dividing by zero and send a sensible velocity vector to the controller
+                timeframe = 0.5  # seconds used for each small incremental move (keeps motion slower)
+                vel = (delta / max(timeframe, eps)).reshape(1, -1)
+
+                #! Send Command to Robot (with velocity profile to reduce jerk)
                 self.send_command(pos_curr, vel)
 
                 #! Update err_curr
