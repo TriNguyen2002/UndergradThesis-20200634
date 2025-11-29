@@ -19,6 +19,31 @@ from moveit_msgs.msg import RobotTrajectory
 PLAN_FILE = "plan_tri_1.pickle"
 
 
+def _load_plan_from_file(path: str):
+    """Load a plan from a pickle file and return a RobotTrajectory object (or None).
+    """
+    if not os.path.exists(path):
+        return None
+    with open(path, 'rb') as f:
+        data = pickle.load(f)
+
+    # If the saved object is already a RobotTrajectory, return it
+    if isinstance(data, RobotTrajectory):
+        return data
+
+    # If it is a tuple/list, try to find a RobotTrajectory element
+    if isinstance(data, (tuple, list)):
+        for item in data:
+            if isinstance(item, RobotTrajectory):
+                return item
+        # fallback: assume index 1 contains plan when available
+        if len(data) >= 2 and isinstance(data[1], RobotTrajectory):
+            return data[1]
+
+    # unknown format — return None to indicate failure
+    return None
+
+
 def replan_RRT_callback(msg:HumanJoint):
     print("REPLAN")
     scene.remove_world_object("human")
@@ -164,8 +189,8 @@ if __name__ == "__main__":
     camera_name = "camera_cage"
     scene.add_box(camera_name, camera_, size=(0.61, 0.5, 0.3))
     rospy.sleep(2)
-    # !- Go Home Pose -!#
-    group.set_named_target("home")
+    # !- Go Up Pose -!#
+    group.set_named_target("up")
     group.go(wait=True)
 
     #!- Set Start Pose -!#
@@ -228,10 +253,17 @@ if __name__ == "__main__":
         
 
     # Publish Reference Traj ----------------------------------
-    with open(file_path, 'rb') as file_open:
-        plan = pickle.load(file_open)[1]
-        input("Press Enter to Start...")
-        pub_traj.publish(plan)
-        # rospy.sleep(2)
+    saved = _load_plan_from_file(file_path)
+    if saved is None:
+        print(f"No valid saved plan found at: {file_path} or file format unsupported.")
+    else:
+        # confirm then publish the loaded plan
+        try:
+            input("Press Enter to publish saved plan to 'ref_traj' (or Ctrl-C to skip)...")
+            pub_traj.publish(saved)
+            rospy.sleep(2)
+            print("Published saved plan to 'ref_traj'")
+        except Exception as exc:
+            print("Failed to publish saved plan:", exc)
     rospy.spin()
     #----------------------------------------------------------

@@ -19,9 +19,9 @@ if __name__ == "__main__":
     # dummy_msg.position.z = 0.3
     # ----------------------------------
 
-    # --- plan_3.pickle ---
-    dummy_msg.position.x = 0.55
-    dummy_msg.position.y = 0.4
+    # --- plan_tri_1.pickle ---
+    dummy_msg.position.x = 0.55 # o.5 for replan case
+    dummy_msg.position.y = -0.4
     dummy_msg.position.z = 0.24
     # ----------------------------------
 
